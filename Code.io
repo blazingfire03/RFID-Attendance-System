@@ -1,0 +1,121 @@
+#include <SPI.h>
+#include <MFRC522.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define SS_PIN 10
+#define RST_PIN 9
+
+MFRC522 mfrc522(SS_PIN, RST_PIN);   // Create MFRC522 instance
+
+// Valid UIDs of students
+byte validUIDs[][4] = {
+  {0x69, 0xE0, 0x96, 0x5D},  // UID of student 1
+  {0xA3, 0xEB, 0x49, 0xFB},  // UID of student 2
+  {0xD3, 0xFF, 0x90, 0xF4},  // UID of student 3
+  {0xAB, 0xCD, 0xEF, 0x12},  // UID of student 4
+};
+
+// Student names
+const char* studentNames[] = {
+  "Aditya Agrawal",  // Name of student 1
+  "JAI",    // Name of student 2
+  "PRANJAL",       // Name of student 3
+  "DEEPAK ",     // Name of student 4
+};
+
+
+// LCD I2C display
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Adjust the address and size according to your display
+
+void setup() {
+  Serial.begin(9600);   // Initialize serial communication
+  SPI.begin();          // Initiate SPI bus
+  mfrc522.PCD_Init();   // Initiate MFRC522
+  lcd.begin(16, 2);     // Initialize the LCD display
+  lcd.init();
+  lcd.backlight();      // Turn on the backlight
+  lcd.clear();
+  lcd.setCursor(2, 0);
+  
+  lcd.print("Scan ID card");
+  Serial.println("CLEARDATA");
+  Serial.println("LABEL,Date,Time,RFID UID");
+  Serial.println("Ready to read RFID cards");
+}
+
+void loop() {
+  // Look for new cards
+  if (mfrc522.PICC_IsNewCardPresent()) {
+    if (mfrc522.PICC_ReadCardSerial()) {
+      // Show UID on serial monitor
+      Serial.print("UID tag: ");
+      for (byte i = 0; i < mfrc522.uid.size; i++) {
+        Serial.print("0x");
+        if (mfrc522.uid.uidByte[i] < 0x10) Serial.print("0");
+        Serial.print(mfrc522.uid.uidByte[i], HEX);
+        if (i < mfrc522.uid.size - 1) Serial.print(", ");
+      }
+      Serial.println();
+      Serial.print("UID Number: ");
+      String content = "";
+      byte letter;
+      for (byte i = 0; i < mfrc522.uid.size; i++) {
+        content.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : ""));
+        content.concat(String(mfrc522.uid.uidByte[i], HEX));
+      }
+      content.toUpperCase();
+      Serial.println(content);
+      
+      // Check if the UID matches any of the valid UIDs
+      bool uidMatched = false;
+      int studentIndex = -1;
+      for (int i = 0; i < sizeof(validUIDs) / sizeof(validUIDs[0]); i++) {
+        if (memcmp(mfrc522.uid.uidByte, validUIDs[i], mfrc522.uid.size) == 0) {
+          uidMatched = true;
+          studentIndex = i;
+          break;
+        }
+      }
+
+      // Perform actions based on UID match
+      if (uidMatched) {
+        // UID matches, perform attendance action for the corresponding student
+
+        // Update the attendance status in the database
+        // Example: Update the attendance status for student studentIndex+1 to "Present"
+        updateAttendance(studentIndex + 1, "Present");
+
+        delay(3000);  // Display attendance status for 3 seconds
+      } else {
+        // UID doesn't match, perform other actions (e.g., display error message)
+
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("ID doesn't match");
+        delay(2000);
+      }
+
+      // Clear the LCD display and reset for the next scan
+      lcd.clear();
+      lcd.setCursor(2, 0);
+      lcd.print("Scan ID card");
+
+      delay(1000);   // Delay to avoid reading the card multiple times in a short period
+    }
+    mfrc522.PICC_HaltA();   // Stop reading
+    mfrc522.PCD_StopCrypto1();  // Stop encryption on PCD
+  }
+}
+
+// Function to update attendance in the database
+void updateAttendance(int studentID, const char* status) {
+  Serial.println( (String) "DATA,DATE,TIME," + studentNames[studentID - 1] );
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(studentNames[studentID - 1]);  // -1 to adjust for array indexing
+  lcd.setCursor(0, 1);  // Set cursor to the second line
+  lcd.print("~");
+  lcd.setCursor(2, 1);  // Set cursor position after 4 pixels
+  lcd.print(status);
+}
